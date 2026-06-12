@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CT-Buddy</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 500px;
+            background: white;
+            padding: 20px;
+            border-radius: 4px;
+        }
+        
+        h1 {
+            margin: 0 0 20px 0;
+            font-size: 20px;
+        }
+        
+        .dropzone {
+            border: 1px dashed #ccc;
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+        
+        .dropzone:hover {
+            background: #f9f9f9;
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+        
+        .project-name {
+            font-size: 13px;
+            color: #666;
+            margin: 10px 0;
+        }
+        
+        .issues {
+            margin: 15px 0;
+            display: none;
+        }
+        
+        .issues h3 {
+            margin: 0 0 10px 0;
+            font-size: 13px;
+            color: red;
+        }
+        
+        .issues ul {
+            margin: 0;
+            padding-left: 20px;
+            font-size: 12px;
+            color: #666;
+            line-height: 1.6;
+        }
+        
+        .issues li {
+            margin-bottom: 5px;
+        }
+        
+        .chat {
+            display: none;
+            margin-top: 20px;
+        }
+        
+        .chat.active {
+            display: block;
+        }
+        
+        .chat-messages {
+            border: 1px solid #ddd;
+            height: 250px;
+            overflow-y: auto;
+            padding: 10px;
+            margin-bottom: 10px;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        
+        .message {
+            margin-bottom: 10px;
+        }
+        
+        .message.user {
+            text-align: right;
+            color: #0066cc;
+        }
+        
+        .message.ai {
+            color: #333;
+        }
+        
+        .chat-input {
+            display: flex;
+            gap: 10px;
+        }
+        
+        input[type="text"] {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            font-size: 13px;
+        }
+        
+        input[type="text"]:disabled {
+            background: #f0f0f0;
+            cursor: not-allowed;
+        }
+        
+        button {
+            padding: 8px 15px;
+            background: #0066cc;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        
+        button:hover {
+            background: #0052a3;
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .tokens {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+        
+        .loading {
+            color: #666;
+            font-size: 13px;
+        }
+        
+        .locked-msg {
+            font-size: 12px;
+            color: red;
+            margin-top: 10px;
+            display: none;
+        }
+        
+        .locked-msg.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>CT-Buddy</h1>
+        
+        <div class="dropzone" id="dropzone">
+            Drag file here or click to upload
+            <input type="file" id="fileInput" accept=".json,.sb3">
+        </div>
+        
+        <div id="projectName" class="project-name"></div>
+        <div id="loading" class="loading"></div>
+        
+        <div id="issues" class="issues">
+            <h3>Issues:</h3>
+            <ul id="issuesList"></ul>
+            <p style="font-size: 12px; color: #999; margin-top: 10px;">Fix these and reupload.</p>
+        </div>
+        
+        <div id="chat" class="chat">
+            <div class="tokens">Attempts: <span id="tokens">3</span>/3</div>
+            <div class="chat-messages" id="messages"></div>
+            <div class="chat-input">
+                <input type="text" id="input" placeholder="Ask a question">
+                <button onclick="send()" id="sendBtn">Send</button>
+            </div>
+            <div id="lockedMsg" class="locked-msg">Chat is locked. Revise your code and upload again.</div>
+        </div>
+    </div>
+    
+    <script>
+        const API = 'http://localhost:5002';
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('fileInput');
+        
+        dropzone.onclick = () => fileInput.click();
+        dropzone.ondragover = (e) => { e.preventDefault(); dropzone.style.background = '#f9f9f9'; };
+        dropzone.ondragleave = () => { dropzone.style.background = 'white'; };
+        dropzone.ondrop = (e) => { e.preventDefault(); handle(e.dataTransfer.files[0]); };
+        fileInput.onchange = (e) => { if(e.target.files[0]) handle(e.target.files[0]); };
+        document.getElementById('input').onkeypress = (e) => { if(e.key === 'Enter') send(); };
+        
+        async function handle(file) {
+            document.getElementById('loading').textContent = 'Analyzing...';
+            document.getElementById('issues').style.display = 'none';
+            document.getElementById('chat').classList.remove('active');
+            document.getElementById('projectName').textContent = file.name;
+            
+            try {
+                const f = new FormData();
+                f.append('file', file);
+                const u = await fetch(`${API}/upload`, { method: 'POST', body: f });
+                if (!u.ok) throw new Error('Upload failed');
+                
+                await new Promise(r => setTimeout(r, 300));
+                
+                const a = await fetch(`${API}/analyze`);
+                const data = await a.json();
+                
+                if (data.bad_habits_found) {
+                    document.getElementById('issuesList').innerHTML = 
+                        data.bad_habits_issues.map(i => `<li>${i}</li>`).join('');
+                    document.getElementById('issues').style.display = 'block';
+                } else if (data.unlock_llm) {
+                    document.getElementById('messages').innerHTML = '';
+                    document.getElementById('chat').classList.add('active');
+                    document.getElementById('lockedMsg').classList.remove('active');
+                    document.getElementById('input').disabled = false;
+                    document.getElementById('sendBtn').disabled = false;
+                    document.getElementById('tokens').textContent = '3';
+                 
+
+                    
+                    try {
+                        const r = await fetch(`${API}/start`);
+                        const d = await r.json();
+                        addMsg('ai', d.ai_response);
+                        document.getElementById('tokens').textContent = d.tokens_remaining;
+                    } catch (e) {
+                        addMsg('ai', 'Your code looks clean! Let\'s talk about how to improve it further.');
+                    }
+                } else if (!data.bad_habits_found && !data.unlock_llm) {
+                    document.getElementById('loading').textContent = 'No low-scoring dimensions found. Your project looks great!';
+                }
+                document.getElementById('loading').textContent = '';
+            } catch (e) {
+                document.getElementById('loading').textContent = 'Error: ' + e.message;
+            }
+        }
+        
+        function addMsg(role, text) {
+            const m = document.createElement('div');
+            m.className = 'message ' + role;
+            m.textContent = text;
+            document.getElementById('messages').appendChild(m);
+            document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+        }
+        
+        async function send() {
+            const inp = document.getElementById('input');
+            const txt = inp.value.trim();
+            if (!txt) return;
+            
+            addMsg('user', txt);
+            inp.value = '';
+            document.getElementById('sendBtn').disabled = true;
+            
+            try {
+                const r = await fetch(`${API}/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question: txt })
+                });
+                const d = await r.json();
+                addMsg('ai', d.ai_response);
+                document.getElementById('tokens').textContent = d.tokens_remaining;
+                
+                if (d.tokens_remaining <= 0) {
+                    document.getElementById('input').disabled = true;
+                    document.getElementById('sendBtn').disabled = true;
+                    document.getElementById('lockedMsg').classList.add('active');
+                }
+            } catch (e) {
+                addMsg('ai', 'Error');
+            } finally {
+                document.getElementById('sendBtn').disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
