@@ -229,7 +229,7 @@ def chat():
 
         dims_text = ', '.join(f'{d} (0/4)' for d in low_dims)
 
-        if tokens_remaining <= 0:
+        if user_question == '__wrap_up__' or tokens_remaining <= 0:
             try:
                 from socratic_turn1 import run as socratic_response
 
@@ -256,35 +256,35 @@ def chat():
                     'chatbot_locked': True
                 }), 200
 
-        is_opening = user_question == '__opening__'
-        if not is_opening:
-            conversation_history.append({'role': 'user', 'message': user_question})
+        conversation_history.append({'role': 'user', 'message': user_question})
+        proj_summary = build_project_summary(targets, scores)
 
-        project_summary = build_project_summary(targets, scores)
-
-        if is_opening:
+        # on the last token, send wrap-up instead of another question
+        is_last = tokens_remaining == 1 and len(conversation_history) > 1
+        if is_last:
+            conv_text = "\n".join([f"{m['role']}: {m['message']}" for m in conversation_history])
             summary = (
-                f"{project_summary}\n"
+                f"Conversation:\n{conv_text}\n\n"
+                f"{proj_summary}\n"
                 f"Low-scoring dimensions: {dims_text}.\n"
-                f"The student just uploaded their project. Ask your opening Socratic question based on what you can infer about this specific project."
+                f"Wrap up. Tell the student specifically what Scratch blocks to add to improve each low dimension."
             )
         else:
             summary = (
-                f"{project_summary}\n"
+                f"{proj_summary}\n"
                 f"Low-scoring dimensions: {dims_text}.\n"
                 f"Student said: {user_question}"
             )
 
         try:
             from socratic_turn1 import run as socratic_response
-            ai_response = socratic_response(summary, low_dims, scores)
+            ai_response = socratic_response(summary, low_dims, scores, final=is_last)
         except Exception as e:
             print(f"ERROR calling Gemini: {e}")
             ai_response = "Thinking about your answer... Consider: what blocks in Scratch let you check if something is true?"
 
         conversation_history.append({'role': 'ai', 'message': ai_response})
-        if not is_opening:
-            tokens_remaining -= 1
+        tokens_remaining -= 1
 
         return jsonify({
             'ai_response': ai_response,
