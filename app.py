@@ -20,7 +20,6 @@ conversation_history = []
 current_low_dims = []
 
 
-# builds a plain-English description of the project to give Gemini context
 def build_project_summary(targets, scores):
     sprites = [t for t in targets if not t.get('isStage')]
     sprite_names = [t.get('name', 'Unknown') for t in sprites]
@@ -37,49 +36,20 @@ def build_project_summary(targets, scores):
     return summary
 
 
-# Temporary 
-
-## mock scores  -- will get replaced with Dr Scratch' metrics
-def get_mock_scores(targets):
-    sprites = [t for t in targets if not t.get('isStage')]
-    num_sprites = max(len(sprites), 1)
-
-    logic_blocks = 0
-    math_blocks = 0
-    custom_blocks = 0
-    vars_total = sum(len(t.get('variables', {})) for t in targets)
-
-    for t in targets:
-        for b in t.get('blocks', {}).values():
-            op = b.get('opcode', '')
-            if any(x in op for x in ('_if', 'repeat', 'wait_until')):
-                logic_blocks += 1
-            if op.startswith('operator_'):
-                math_blocks += 1
-            if op == 'procedures_definition':
-                custom_blocks += 1
-
-    def score(val, thresholds):
-        for i, t in enumerate(thresholds):
-            if val < t:
-                return i
-        return 4
-
-    logic_score = score(logic_blocks / num_sprites, [3, 8, 15, 25])
-    abstraction_score = score(custom_blocks, [3, 6, 12, 20])
-    data_score = score(vars_total / num_sprites, [2, 4, 6, 10])
-    math_score = score(math_blocks, [2, 10, 30, 60])
-
+def get_scores(json_project):
+    from hairball3.mastery import Mastery
+    mastery = Mastery(filename='project', json_project=json_project)
+    raw = mastery.get_scores()
     return {
-        'Logic': logic_score,
-        'Abstraction': abstraction_score,
-        'Data Representation': data_score,
-        'Math Operators': math_score,
-        'Parallelism': 3,
-        'Synchronization': 3,
-        'Flow Control': 4,
-        'User Interactivity': 2,
-        'Motion Operators': 3,
+        'Logic':               raw.get('Logic', 0),
+        'Abstraction':         raw.get('Abstraction', 0),
+        'Data Representation': raw.get('DataRepresentation', 0),
+        'Math Operators':      raw.get('MathOperators', 0),
+        'Flow Control':        raw.get('FlowControl', 0),
+        'Synchronization':     raw.get('Synchronization', 0),
+        'Parallelism':         raw.get('Parallelization', 0),
+        'User Interactivity':  raw.get('UserInteractivity', 0),
+        'Motion Operators':    raw.get('MotionOperators', 0),
     }
 
 
@@ -117,7 +87,8 @@ def check_bad_habits(targets):
         if dead:
             issues.append(f'Sprite "{name}" has {len(dead)} block(s) with no trigger')
 
-    DEFAULT = ['Sprite1', 'Sprite2', 'Sprite3', 'Sprite4', 'Cat', 'Sprite']
+    # same default names as Dr. Scratch
+    DEFAULT = ['Sprite', 'Objeto', 'Personatge', 'Figura', 'o actor', 'Personaia']
     for t in targets:
         if not t.get('isStage') and t.get('name') in DEFAULT:
             issues.append(f'Default name: "{t["name"]}"')
@@ -168,10 +139,13 @@ def analyze():
 
         targets = current_project.get('targets', [])
         issues = check_bad_habits(targets)
-        scores = get_mock_scores(targets)
+        scores = get_scores(current_project)
 
-        LLM_DIMS = {'logic', 'abstraction', 'data representation', 'math operators'}
-        low_dims = [d for d, v in scores.items() if d.lower() in LLM_DIMS and v == 0]
+        LLM_DIMS = {'Logic', 'Abstraction', 'Data Representation', 'Math Operators'}
+
+        ct_scores = {d: v for d, v in scores.items() if d in LLM_DIMS}
+        min_score = min(ct_scores.values()) if ct_scores else 4
+        low_dims = [d for d, v in ct_scores.items() if v == min_score and v < 4]
         current_low_dims = low_dims
 
         unlock_llm = len(issues) == 0 and len(low_dims) > 0
@@ -193,9 +167,9 @@ def start():
         if not current_project:
             return jsonify({'error': 'No project loaded'}), 400
         targets = current_project.get('targets', [])
-        scores = get_mock_scores(targets)
+        scores = get_scores(current_project)
         low_dims = current_low_dims or ['Logic']
-        dims_text = ', '.join(f'{d} (0/4)' for d in low_dims)
+        dims_text = ', '.join(f'{d} ({scores.get(d, 0)}/4)' for d in low_dims)
         summary = (
             f"{build_project_summary(targets, scores)}\n"
             f"Low-scoring dimensions: {dims_text}.\n"
@@ -224,10 +198,10 @@ def chat():
 
         targets = current_project.get('targets', [])
         sprite_names = [t.get('name') for t in targets if not t.get('isStage')]
-        scores = get_mock_scores(targets)
+        scores = get_scores(current_project)
         low_dims = current_low_dims or ['Logic']
 
-        dims_text = ', '.join(f'{d} (0/4)' for d in low_dims)
+        dims_text = ', '.join(f'{d} ({scores.get(d, 0)}/4)' for d in low_dims)
 
         if user_question == '__wrap_up__' or tokens_remaining <= 0:
             try:
@@ -259,7 +233,6 @@ def chat():
         conversation_history.append({'role': 'user', 'message': user_question})
         proj_summary = build_project_summary(targets, scores)
 
-        # on the last token, send wrap-up instead of another question
         is_last = tokens_remaining == 1 and len(conversation_history) > 1
         if is_last:
             conv_text = "\n".join([f"{m['role']}: {m['message']}" for m in conversation_history])

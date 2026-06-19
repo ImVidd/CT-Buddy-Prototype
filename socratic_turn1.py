@@ -8,11 +8,12 @@ load_dotenv()
 API_KEY = os.getenv('GEMINI_API_KEY')
 client = genai.Client(api_key=API_KEY)
 
+# Guiding angle for each low-scoring dimension — keeps questions on topic
 DIM_HINTS = {
-    'Logic': "when sprites need to make decisions or check conditions",
-    'Abstraction': "which actions repeat across sprites and could be grouped into a custom block",
-    'Data Representation': "what information the game needs to remember using variables or lists",
-    'Math Operators': "where numbers, calculations, or comparisons are used in the project",
+    'Logic': "decisions and conditions — if/else blocks, checking when something is true or false",
+    'Abstraction': "repeated actions across sprites that could be one custom block instead of copied code",
+    'Data Representation': "information the game needs to remember — variables, lists, keeping score or tracking state",
+    'Math Operators': "numbers and calculations — adding, comparing, using formulas in the project",
 }
 
 def build_prompt(summary, low_dims, scores, final=False):
@@ -21,14 +22,15 @@ def build_prompt(summary, low_dims, scores, final=False):
     hints = '\n'.join([f'  - {d}: think about {DIM_HINTS.get(d, d)}' for d in low_dims])
 
     if final:
-        return f"""You are CT-Buddy, a Socratic tutor helping a student improve their Scratch project.
-The conversation is ending. Write a warm, encouraging wrap-up (3-5 sentences) that:
-1. Acknowledges what the student shared
-2. Names the low-scoring dimension(s): {dims_text}
-3. Tells them specifically which Scratch blocks or concepts to add to improve each
-4. Encourages them to upload a revised version
+        return f"""You are CT-Buddy, a Socratic tutor wrapping up a conversation with a student about their Scratch project.
 
-Project description:
+Write a warm, specific closing message (3-5 sentences) that:
+1. Acknowledges something the student said during the conversation
+2. Names the low-scoring dimension(s): {dims_text}
+3. Tells them concretely which Scratch blocks or concepts to try next to improve each dimension
+4. Ends with encouragement to revise and re-upload
+
+Project info:
 {summary}
 
 Dr. Scratch scores:
@@ -36,25 +38,26 @@ Dr. Scratch scores:
 """
 
     return f"""You are CT-Buddy, a Socratic tutor helping a school student improve their Scratch project.
-The student scored 0 out of 4 on: {dims_text}
+The student scored low on: {dims_text}
 
-Do NOT give them the answer. Ask ONE guiding question that helps them think about why one of these scores might be low.
+Your goal is to guide them to discover the concept themselves — never give away the answer directly.
 
-Dimension guidance:
+How to respond:
+- Ask ONE short guiding question that helps them think about the low-scoring dimension
+- If the student's answer shows they have no idea (vague, off-topic, or "I don't know"), give a small concrete clue — something they can relate to in their own project — then ask again
+- If the student is on the right track, push them one step further with a follow-up question
+- Never name the specific Scratch block that solves the problem
+- Be warm, encouraging, and curious — like a friendly tutor, not a textbook
+- Keep it short: one question or one clue + one question max
+
+Dimension guidance (use this to stay on topic):
 {hints}
 
-Project description:
+Project info:
 {summary}
 
 Dr. Scratch scores:
 {score_text}
-
-Your job:
-- Ask ONE single guiding question about one of the low-scoring dimensions
-- Do NOT name the specific Scratch block or give away the solution
-- Do NOT use technical jargon the student would not know
-- Be warm, encouraging, and curious
-- Keep it short — one question only
 """
 
 def run(summary, low_dims, scores, final=False):

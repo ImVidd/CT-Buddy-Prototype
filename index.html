@@ -10,15 +10,19 @@
             margin: 0;
             padding: 20px;
             background: #f5f5f5;
+            display: flex;
+            justify-content: center;
         }
-        
+
         .container {
-            max-width: 500px;
+            width: 100%;
+            max-width: 560px;
             background: white;
-            padding: 20px;
-            border-radius: 4px;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
         }
-        
+
         h1 {
             margin: 0 0 20px 0;
             font-size: 20px;
@@ -89,16 +93,41 @@
         }
         
         .message {
-            margin-bottom: 10px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
         }
-        
+
         .message.user {
-            text-align: right;
-            color: #0066cc;
+            flex-direction: row-reverse;
         }
-        
-        .message.ai {
+
+        .message.user .bubble {
+            background: #0066cc;
+            color: white;
+            border-radius: 16px 16px 4px 16px;
+        }
+
+        .message.ai .bubble {
+            background: #f0f0f0;
             color: #333;
+            border-radius: 16px 16px 16px 4px;
+        }
+
+        .bubble {
+            padding: 8px 12px;
+            font-size: 13px;
+            line-height: 1.5;
+            max-width: 80%;
+        }
+
+        .avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            object-fit: cover;
+            flex-shrink: 0;
         }
         
         .chat-input {
@@ -163,7 +192,13 @@
 </head>
 <body>
     <div class="container">
-        <h1>CT-Buddy</h1>
+        <div style="text-align:center; margin-bottom:20px;">
+            <img src="assets/dr_scratch_logo.png" style="height:48px;">
+        </div>
+        <div style="margin-bottom:20px;">
+            <div style="font-weight:700; font-size:18px;">CT-Buddy</div>
+            <div style="font-size:12px; color:#888; margin-top:2px;">Upload your Scratch project and let's improve it together</div>
+        </div>
         
         <div class="dropzone" id="dropzone">
             Drag file here or click to upload
@@ -177,6 +212,9 @@
             <h3>Issues:</h3>
             <ul id="issuesList"></ul>
             <p style="font-size: 12px; color: #999; margin-top: 10px;">Fix these and reupload.</p>
+            <!-- ##### SKIP BUTTON  ##### -->
+            <button onclick="skipToChat()" style="margin-top:8px; background:#ffa72c; font-size:12px;">Skip (Chat with CT-Buddy)</button>
+            <!-- ##### END SKIP BUTTON ##### -->
         </div>
         
         <div id="chat" class="chat">
@@ -225,20 +263,24 @@
                     document.getElementById('issues').style.display = 'block';
                 } else if (data.unlock_llm) {
                     document.getElementById('messages').innerHTML = '';
-                    document.getElementById('chat').classList.add('active');
-                    document.getElementById('lockedMsg').classList.remove('active');
-                    document.getElementById('input').disabled = false;
-                    document.getElementById('sendBtn').disabled = false;
+                    document.getElementById('input').disabled = true;
+                    document.getElementById('sendBtn').disabled = true;
                     document.getElementById('tokens').textContent = '3';
-                 
-
+                    document.getElementById('loading').textContent = 'CT-Buddy is reviewing your project...';
 
                     try {
                         const r = await fetch(`${API}/start`);
                         const d = await r.json();
+                        document.getElementById('loading').textContent = '';
+                        document.getElementById('chat').classList.add('active');
+                        document.getElementById('lockedMsg').classList.remove('active');
+                        document.getElementById('input').disabled = false;
+                        document.getElementById('sendBtn').disabled = false;
                         addMsg('ai', d.ai_response);
                         document.getElementById('tokens').textContent = d.tokens_remaining;
                     } catch (e) {
+                        document.getElementById('loading').textContent = '';
+                        document.getElementById('chat').classList.add('active');
                         addMsg('ai', 'Your code looks clean! Let\'s talk about how to improve it further.');
                     }
                 } else if (!data.bad_habits_found && !data.unlock_llm) {
@@ -250,10 +292,46 @@
             }
         }
         
+        // ##### SKIP FUNCTION  #####
+        async function skipToChat() {
+            document.getElementById('issues').style.display = 'none';
+            document.getElementById('messages').innerHTML = '';
+            document.getElementById('tokens').textContent = '3';
+            document.getElementById('input').disabled = true;
+            document.getElementById('sendBtn').disabled = true;
+            document.getElementById('loading').textContent = 'CT-Buddy is reviewing your project...';
+            try {
+                const r = await fetch(`${API}/start`);
+                const d = await r.json();
+                document.getElementById('loading').textContent = '';
+                document.getElementById('chat').classList.add('active');
+                document.getElementById('lockedMsg').classList.remove('active');
+                document.getElementById('input').disabled = false;
+                document.getElementById('sendBtn').disabled = false;
+                addMsg('ai', d.ai_response);
+                document.getElementById('tokens').textContent = d.tokens_remaining;
+            } catch (e) {
+                document.getElementById('loading').textContent = 'Error connecting to server.';
+            }
+        }
+        // ##### SKIP FUNCTION #####
+
         function addMsg(role, text) {
             const m = document.createElement('div');
             m.className = 'message ' + role;
-            m.textContent = text;
+
+            if (role === 'ai') {
+                const avatar = document.createElement('img');
+                avatar.src = 'assets/CT-Buddy.png';
+                avatar.className = 'avatar';
+                m.appendChild(avatar);
+            }
+
+            const bubble = document.createElement('div');
+            bubble.className = 'bubble';
+            bubble.textContent = text;
+            m.appendChild(bubble);
+
             document.getElementById('messages').appendChild(m);
             document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
         }
