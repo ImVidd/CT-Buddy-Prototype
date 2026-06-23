@@ -5,6 +5,7 @@ import json
 import zipfile
 import tempfile
 from collections import Counter
+from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)
@@ -266,6 +267,30 @@ def chat():
         }), 200
     except Exception as e:
         print(f"ERROR in chat: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/save', methods=['POST'])
+def save():
+    try:
+        data = request.get_json()
+        save_dir = os.path.join(os.path.expanduser('~'), 'ct_buddy_sessions')
+        os.makedirs(save_dir, exist_ok=True)
+        filename = data.get('filename')
+        if filename:
+            filepath = os.path.join(save_dir, filename)
+            with open(filepath, 'r') as f:
+                existing = json.load(f)
+            existing['after_scores'] = data.get('after_scores')
+            with open(filepath, 'w') as f:
+                json.dump(existing, f, indent=2)
+        else:
+            filename = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            filepath = os.path.join(save_dir, filename)
+            with open(filepath, 'w') as f:
+                json.dump(data, f, indent=2)
+        return jsonify({'status': 'saved', 'filename': filename}), 200
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
