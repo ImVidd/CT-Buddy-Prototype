@@ -4,6 +4,7 @@ import os
 import json
 import zipfile
 import tempfile
+import csv
 from collections import Counter
 from datetime import datetime
 
@@ -19,6 +20,7 @@ current_project = {}
 tokens_remaining = 3
 conversation_history = []
 current_low_dims = []
+active_sessions = {}
 
 
 def build_project_summary(targets, scores):
@@ -270,6 +272,52 @@ def chat():
         return jsonify({'error': str(e)}), 500
 
 
+DIMS = ['Logic', 'Abstraction', 'Data Representation', 'Math Operators',
+        'Parallelism', 'Synchronization', 'Flow Control', 'User Interactivity', 'Motion Operators']
+
+CSV_HEADERS = (
+    ['timestamp'] +
+    [f'before_{d}' for d in DIMS] +
+    [f'after_{d}' for d in DIMS] +
+    ['conversation', 'ratings']
+)
+
+# GOOGLE CREDENTIALS AND SHEET 
+
+
+def append_to_sheets(row_data):
+    creds_path = os.getenv('GOOGLE_CREDENTIALS')
+    sheet_id = os.getenv('GOOGLE_SHEET_ID')
+    if not creds_path or not sheet_id:
+        return
+    import gspread
+    from google.oauth2.service_account import Credentials
+    scopes = ['https://www.googleapis.com/auth/spreadsheets']
+    creds = Credentials.from_service_account_file(creds_path, scopes=scopes)
+    gc = gspread.authorize(creds)
+    sh = gc.open_by_key(sheet_id).sheet1
+    if sh.row_count == 0 or sh.cell(1, 1).value != 'timestamp':
+        sh.insert_row(CSV_HEADERS, 1)
+    sh.append_row(row_data)
+
+
+def build_row(data):
+    before = data.get('initial_scores') or {}
+    after = data.get('after_scores') or {}
+    messages = data.get('messages') or []
+    ratings = data.get('ratings') or {}
+    conv = ' | '.join([f"{m['role']}: {m['text']}" for m in messages])
+    ratings_str = ', '.join([f"msg{k}:{v}" for k, v in ratings.items() if v])
+    return (
+        [data.get('timestamp', '')] +
+        [before.get(d, '') for d in DIMS] +
+        [after.get(d, '') for d in DIMS] +
+        [conv, ratings_str]
+    )
+
+############# GOOGLE CREDENTIALS AND SHEET 
+
+
 @app.route('/save', methods=['POST'])
 def save():
     try:
@@ -277,18 +325,37 @@ def save():
         save_dir = os.path.join(os.path.expanduser('~'), 'ct_buddy_sessions')
         os.makedirs(save_dir, exist_ok=True)
         filename = data.get('filename')
+
+        csv_path = os.path.join(save_dir, 'sessions.csv')
+
         if filename:
-            filepath = os.path.join(save_dir, filename)
-            with open(filepath, 'r') as f:
-                existing = json.load(f)
-            existing['after_scores'] = data.get('after_scores')
-            with open(filepath, 'w') as f:
-                json.dump(existing, f, indent=2)
+
+
+            session = active_sessions.pop(filename, {})
+            session['after_scores'] = data.get('after_scores')
+            row = build_row(session)
+            with open(csv_path, 'a', newline='') as cf:
+                writer = csv.writer(cf)
+                writer.writerow(row)
+            try:
+                append_to_sheets(row)
+            except Exception as e:
+                print(f"Sheets update failed: {e}")
         else:
-            filename = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-            filepath = os.path.join(save_dir, filename)
-            with open(filepath, 'w') as f:
-                json.dump(data, f, indent=2)
+            filename = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            active_sessions[filename] = data
+            write_header = not os.path.exists(csv_path)
+            row = build_row(data)
+            with open(csv_path, 'a', newline='') as cf:
+                writer = csv.writer(cf)
+                if write_header:
+                    writer.writerow(CSV_HEADERS)
+                writer.writerow(row)
+            try:
+                append_to_sheets(row)
+            except Exception as e:
+                print(f"Sheets save failed: {e}")
+
         return jsonify({'status': 'saved', 'filename': filename}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
