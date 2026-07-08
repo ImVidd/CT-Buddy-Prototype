@@ -244,17 +244,17 @@
             <div style="font-size:12px; color:#555; margin-top:6px;">Session ID: <strong id="sessionId"></strong></div>
         </div>
 
-        <!-- LOBBY SCREEN -->
+        <!-- ##### LOBBY SCREEN ##### -->
         <div id="lobby" style="text-align:center; padding:24px 0;">
             <div style="font-size:15px; font-weight:600; margin-bottom:8px;">Welcome to CT-Buddy!</div>
             <div style="font-size:13px; color:#666; margin-bottom:20px;">You have been assigned a Scratch project to work on. Download it, open it in Scratch, and modify it. Then come back here to upload your improved version and chat with CT-Buddy.</div>
             <button onclick="downloadProject()" style="background:#4caf50; font-size:14px; padding:10px 24px;">Download Your Project</button>
             <div style="margin-top:16px; font-size:12px; color:#aaa;">Once you've modified your project in Scratch, click below to continue.</div>
-            <button onclick="startSession()" style="margin-top:8px; background:#0066cc; font-size:13px;">I'm ready — Upload my project</button>
+            <button onclick="startSession()" style="margin-top:8px; background:#0066cc; font-size:13px;">I'm ready. Upload my project</button>
         </div>
         <!-- END LOBBY SCREEN -->
 
-        <!-- MAIN UI -->
+        
         <div id="mainUI" style="display:none;">
         <div class="dropzone" id="dropzone">
             Drag file here or click to upload
@@ -290,6 +290,7 @@
             </div>
         </div>
         </div>
+        // end mainUI
     </div>
 
     <script>
