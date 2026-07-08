@@ -241,8 +241,21 @@
         <div style="margin-bottom:20px;">
             <div style="font-weight:700; font-size:18px;">CT-Buddy</div>
             <div style="font-size:12px; color:#888; margin-top:2px;">Upload your Scratch project and let's improve it together</div>
+            <div style="font-size:12px; color:#555; margin-top:6px;">Session ID: <strong id="sessionId"></strong></div>
         </div>
-        
+
+        <!-- LOBBY SCREEN -->
+        <div id="lobby" style="text-align:center; padding:24px 0;">
+            <div style="font-size:15px; font-weight:600; margin-bottom:8px;">Welcome to CT-Buddy!</div>
+            <div style="font-size:13px; color:#666; margin-bottom:20px;">You have been assigned a Scratch project to work on. Download it, open it in Scratch, and modify it. Then come back here to upload your improved version and chat with CT-Buddy.</div>
+            <button onclick="downloadProject()" style="background:#4caf50; font-size:14px; padding:10px 24px;">Download Your Project</button>
+            <div style="margin-top:16px; font-size:12px; color:#aaa;">Once you've modified your project in Scratch, click below to continue.</div>
+            <button onclick="startSession()" style="margin-top:8px; background:#0066cc; font-size:13px;">I'm ready — Upload my project</button>
+        </div>
+        <!-- END LOBBY SCREEN -->
+
+        <!-- MAIN UI -->
+        <div id="mainUI" style="display:none;">
         <div class="dropzone" id="dropzone">
             Drag file here or click to upload
             <input type="file" id="fileInput" accept=".json,.sb3">
@@ -276,12 +289,25 @@
                 <div id="reuploadResult" style="margin-top:12px; font-size:12px;"></div>
             </div>
         </div>
+        </div>
     </div>
-    
+
     <script>
         const API = 'http://localhost:5002';
         const dropzone = document.getElementById('dropzone');
         const fileInput = document.getElementById('fileInput');
+
+        const sessionId = String(Math.floor(100000 + Math.random() * 900000));
+        document.getElementById('sessionId').textContent = sessionId;
+
+        function downloadProject() {
+            window.location.href = `${API}/get-project`;
+        }
+
+        function startSession() {
+            document.getElementById('lobby').style.display = 'none';
+            document.getElementById('mainUI').style.display = 'block';
+        }
         
         dropzone.onclick = () => fileInput.click();
         dropzone.ondragover = (e) => { e.preventDefault(); dropzone.style.background = '#f9f9f9'; };
@@ -307,10 +333,13 @@
                 const a = await fetch(`${API}/analyze`);
                 const data = await a.json();
 
-                // show scores after every upload
+                // store scores for backend
                 if (data.dr_scratch_scores) {
-                    showScores(data.dr_scratch_scores);
-                    if (!initialScores) initialScores = data.dr_scratch_scores;
+                    if (!initialScores) {
+                        initialScores = data.dr_scratch_scores;
+                        allScores = [];
+                        reuploadCount = 0;
+                    }
                 }
 
                 if (data.bad_habits_found) {
@@ -472,7 +501,7 @@
                 const d = await r.json();
                 addMsg('ai', d.ai_response);
                 document.getElementById('tokens').textContent = d.tokens_remaining;
-                
+
                 if (d.tokens_remaining <= 0) {
                     document.getElementById('input').disabled = true;
                     document.getElementById('sendBtn').disabled = true;
@@ -488,8 +517,11 @@
             }
         }
 
-        // stores initial scores for comparison
+        // stores scores
         let initialScores = null;
+        let allScores = [];   
+        let reuploadCount = 0;
+        const MAX_REUPLOADS = 3;
 
         async function saveSession() {
             try {
@@ -497,6 +529,7 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
+                        session_id: sessionId,
                         timestamp: new Date().toISOString(),
                         initial_scores: initialScores,
                         messages: messageLog,
@@ -514,41 +547,51 @@
         reuploadInput.onchange = async (e) => {
             const file = e.target.files[0];
             if (!file) return;
+            reuploadInput.value = '';
+            reuploadCount++;
+
             const resultEl = document.getElementById('reuploadResult');
             resultEl.textContent = 'Analyzing revised project...';
 
             const f = new FormData();
             f.append('file', file);
-            await fetch(`${API}/upload`, { method: 'POST', body: f });
+            await fetch(`${API}/upload?reupload=true`, { method: 'POST', body: f });
             const a = await fetch(`${API}/analyze`);
             const data = await a.json();
             const newScores = data.dr_scratch_scores;
+            allScores.push(newScores);
 
-            if (!initialScores) {
-                resultEl.textContent = 'Could not compare — no initial scores found.';
-                return;
-            }
-
+            // rebuild comparison table
             const dims = ['Logic', 'Abstraction', 'Data Representation', 'Math Operators',
                           'Parallelism', 'Synchronization', 'Flow Control', 'User Interactivity', 'Motion Operators'];
+            const labels = ['Initial', 'Attempt 1', 'Attempt 2', 'Attempt 3'];
+            const headerCols = ['Initial', ...allScores.map((_, i) => `Attempt ${i+1}`)];
+
             let html = '<div style="font-weight:600; margin-bottom:6px;">Score Comparison</div>';
             html += '<table style="font-size:12px; width:100%; border-collapse:collapse;">';
-            html += '<tr><td></td><td style="color:#888">Before</td><td style="color:#888">After</td><td style="color:#888">Change</td></tr>';
+            html += '<tr><td></td>' + headerCols.map(l => `<td style="color:#888;padding:3px 6px">${l}</td>`).join('') + '<td style="color:#888;padding:3px 6px">Change</td></tr>';
             dims.forEach(dim => {
-                const before = initialScores[dim] ?? 0;
-                const after = newScores[dim] ?? 0;
-                const diff = after - before;
+                const base = initialScores[dim] ?? 0;
+                const latest = newScores[dim] ?? 0;
+                const diff = latest - base;
                 const color = diff > 0 ? '#4caf50' : diff < 0 ? '#e53935' : '#888';
                 const arrow = diff > 0 ? '▲' : diff < 0 ? '▼' : '—';
+                const attemptCols = allScores.map(s => `<td style="padding:3px 6px">${s[dim] ?? 0}/4</td>`).join('');
                 html += `<tr>
                     <td style="padding:3px 6px 3px 0">${dim}</td>
-                    <td style="padding:3px 6px">${before}/4</td>
-                    <td style="padding:3px 6px">${after}/4</td>
+                    <td style="padding:3px 6px">${base}/4</td>
+                    ${attemptCols}
                     <td style="padding:3px 6px; color:${color}; font-weight:600">${arrow} ${Math.abs(diff)}</td>
                 </tr>`;
             });
             html += '</table>';
             resultEl.innerHTML = html;
+
+            // lock re-upload after 3 attempts
+            if (reuploadCount >= MAX_REUPLOADS) {
+                document.getElementById('reuploadSection').querySelector('button').style.display = 'none';
+                resultEl.insertAdjacentHTML('beforeend', '<div style="margin-top:10px; font-size:12px; color:#888;">You have used all 3 revision attempts.</div>');
+            }
 
             if (sessionFilename) {
                 fetch(`${API}/save`, {
@@ -556,6 +599,33 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ filename: sessionFilename, after_scores: newScores })
                 });
+            }
+
+            // restart chat
+            if (reuploadCount < MAX_REUPLOADS) {
+                const divider = document.createElement('div');
+                divider.style.cssText = 'text-align:center; font-size:11px; color:#aaa; margin:12px 0; border-top:1px solid #eee; padding-top:8px;';
+                divider.textContent = `— Attempt ${reuploadCount + 1} —`;
+                document.getElementById('messages').appendChild(divider);
+                document.getElementById('input').disabled = true;
+                document.getElementById('sendBtn').disabled = true;
+                document.getElementById('lockedMsg').classList.remove('active');
+                const loadingMsg = document.createElement('div');
+                loadingMsg.style.cssText = 'text-align:center; font-size:12px; color:#888; padding:10px;';
+                loadingMsg.textContent = 'CT-Buddy is reviewing your changes...';
+                document.getElementById('messages').appendChild(loadingMsg);
+                document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+                try {
+                    const r = await fetch(`${API}/start`);
+                    const d = await r.json();
+                    loadingMsg.remove();
+                    document.getElementById('input').disabled = false;
+                    document.getElementById('sendBtn').disabled = false;
+                    document.getElementById('tokens').textContent = d.tokens_remaining;
+                    addMsg('ai', d.ai_response);
+                } catch (err) {
+                    loadingMsg.textContent = 'Error restarting chat.';
+                }
             }
         };
     </script>

@@ -1,10 +1,11 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import os
 import json
 import zipfile
 import tempfile
 import csv
+import random
 from collections import Counter
 from datetime import datetime
 
@@ -21,6 +22,7 @@ tokens_remaining = 3
 conversation_history = []
 current_low_dims = []
 active_sessions = {}
+upload_count = 0
 
 
 def build_project_summary(targets, scores):
@@ -99,14 +101,32 @@ def check_bad_habits(targets):
     return issues
 
 
+PROJECTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'projects')
+
 @app.route('/')
 def home():
     return jsonify({'status': 'CT-Buddy Running'})
 
 
+@app.route('/get-project', methods=['GET'])
+def get_project():
+    try:
+        files = [f for f in os.listdir(PROJECTS_DIR) if f.endswith('.sb3')]
+        if not files:
+            return jsonify({'error': 'No projects found'}), 404
+        chosen = random.choice(files)
+        return send_file(
+            os.path.join(PROJECTS_DIR, chosen),
+            as_attachment=True,
+            download_name=chosen
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/upload', methods=['POST'])
 def upload():
-    global current_project, tokens_remaining, conversation_history, current_low_dims
+    global current_project, tokens_remaining, conversation_history, current_low_dims, upload_count
     try:
         file = request.files.get('file')
         if not file:
@@ -125,10 +145,15 @@ def upload():
 
         current_project = json.loads(project_json_content)
         tokens_remaining = 3
-        conversation_history = []
         current_low_dims = []
 
-        return jsonify({'status': 'Uploaded'}), 200
+        is_reupload = request.args.get('reupload') == 'true'
+        if not is_reupload:
+            conversation_history = []
+            upload_count = 0
+        upload_count += 1
+
+        return jsonify({'status': 'Uploaded', 'upload_count': upload_count}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -173,11 +198,25 @@ def start():
         scores = get_scores(current_project)
         low_dims = current_low_dims or ['Logic']
         dims_text = ', '.join(f'{d} ({scores.get(d, 0)}/4)' for d in low_dims)
-        summary = (
-            f"{build_project_summary(targets, scores)}\n"
-            f"Low-scoring dimensions: {dims_text}.\n"
-            f"The student just uploaded their project. Ask your opening Socratic question based on this specific project."
-        )
+
+        if conversation_history:
+            conv_text = "\n".join([f"{m['role']}: {m['message']}" for m in conversation_history])
+            summary = (
+                f"{build_project_summary(targets, scores)}\n"
+                f"Low-scoring dimensions: {dims_text}.\n"
+                f"Previous conversation:\n{conv_text}\n\n"
+                f"The student just re-uploaded a revised version of their project. "
+                f"DO NOT greet them as if it is the first time, you already know them and have been talking. "
+                f"DO NOT say 'Hey there' or introduce yourself again. Just the first time after they re-upload to greet them again "
+                f"Briefly acknowledge the re-upload and what they discussed before, then ask one Socratic follow-up question to continue guiding them."
+            )
+        else:
+            summary = (
+                f"{build_project_summary(targets, scores)}\n"
+                f"Low-scoring dimensions: {dims_text}.\n"
+                f"The student just uploaded their project. Ask your opening Socratic question based on this specific project."
+            )
+
         from socratic_turn1 import run as ask
         response = ask(summary, low_dims, scores)
         return jsonify({'ai_response': response, 'tokens_remaining': tokens_remaining}), 200
@@ -237,13 +276,16 @@ def chat():
         proj_summary = build_project_summary(targets, scores)
 
         is_last = tokens_remaining == 1 and len(conversation_history) > 1
+
         if is_last:
             conv_text = "\n".join([f"{m['role']}: {m['message']}" for m in conversation_history])
             summary = (
                 f"Conversation:\n{conv_text}\n\n"
                 f"{proj_summary}\n"
                 f"Low-scoring dimensions: {dims_text}.\n"
-                f"Wrap up. Tell the student specifically what Scratch blocks to add to improve each low dimension."
+                f"The student's last message was: \"{user_question}\". "
+                f"Acknowledge their idea or answer directly in 1-2 sentences, then wrap up by telling them "
+                f"specifically what Scratch blocks to try to improve each low dimension."
             )
         else:
             summary = (
@@ -257,7 +299,7 @@ def chat():
             ai_response = socratic_response(summary, low_dims, scores, final=is_last)
         except Exception as e:
             print(f"ERROR calling Gemini: {e}")
-            ai_response = "Thinking about your answer... Consider: what blocks in Scratch let you check if something is true?"
+            ai_response = "Oops, something went wrong on our end. Please try sending your message again."
 
         conversation_history.append({'role': 'ai', 'message': ai_response})
         tokens_remaining -= 1
@@ -276,7 +318,7 @@ DIMS = ['Logic', 'Abstraction', 'Data Representation', 'Math Operators',
         'Parallelism', 'Synchronization', 'Flow Control', 'User Interactivity', 'Motion Operators']
 
 CSV_HEADERS = (
-    ['timestamp'] +
+    ['session_id', 'timestamp'] +
     [f'before_{d}' for d in DIMS] +
     [f'after_{d}' for d in DIMS] +
     ['conversation', 'ratings']
@@ -309,7 +351,7 @@ def build_row(data):
     conv = ' | '.join([f"{m['role']}: {m['text']}" for m in messages])
     ratings_str = ', '.join([f"msg{k}:{v}" for k, v in ratings.items() if v])
     return (
-        [data.get('timestamp', '')] +
+        [data.get('session_id', ''), data.get('timestamp', '')] +
         [before.get(d, '') for d in DIMS] +
         [after.get(d, '') for d in DIMS] +
         [conv, ratings_str]
