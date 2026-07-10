@@ -153,6 +153,14 @@ def upload():
             upload_count = 0
         upload_count += 1
 
+        # save latest .sb3 file
+        session_id = request.args.get('session_id')
+        if session_id and file_path.endswith('.sb3'):
+            save_dir = os.path.join(os.path.expanduser('~'), 'ct_buddy_sessions')
+            os.makedirs(save_dir, exist_ok=True)
+            import shutil
+            shutil.copy(file_path, os.path.join(save_dir, f"{session_id}_project.sb3"))
+
         return jsonify({'status': 'Uploaded', 'upload_count': upload_count}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500

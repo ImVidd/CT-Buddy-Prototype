@@ -290,7 +290,6 @@
             </div>
         </div>
         </div>
-        // end mainUI
     </div>
 
     <script>
@@ -326,7 +325,7 @@
             try {
                 const f = new FormData();
                 f.append('file', file);
-                const u = await fetch(`${API}/upload`, { method: 'POST', body: f });
+                const u = await fetch(`${API}/upload?session_id=${sessionId}`, { method: 'POST', body: f });
                 if (!u.ok) throw new Error('Upload failed');
                 
                 await new Promise(r => setTimeout(r, 300));
@@ -556,7 +555,7 @@
 
             const f = new FormData();
             f.append('file', file);
-            await fetch(`${API}/upload?reupload=true`, { method: 'POST', body: f });
+            await fetch(`${API}/upload?reupload=true&session_id=${sessionId}`, { method: 'POST', body: f });
             const a = await fetch(`${API}/analyze`);
             const data = await a.json();
             const newScores = data.dr_scratch_scores;
