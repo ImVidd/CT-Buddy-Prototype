@@ -103,6 +103,23 @@ def check_bad_habits(targets):
 
 PROJECTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'projects')
 
+
+def upload_to_drive(file_path, filename):
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaFileUpload
+    creds_path = os.getenv('GOOGLE_CREDENTIALS')
+    folder_id = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
+    if not creds_path or not folder_id:
+        raise Exception('Drive not configured')
+    creds = service_account.Credentials.from_service_account_file(
+        creds_path, scopes=['https://www.googleapis.com/auth/drive']
+    )
+    service = build('drive', 'v3', credentials=creds)
+    file_metadata = {'name': filename, 'parents': [folder_id]}
+    media = MediaFileUpload(file_path, mimetype='application/octet-stream')
+    service.files().create(body=file_metadata, media_body=media).execute()
+
 @app.route('/')
 def home():
     return jsonify({'status': 'CT-Buddy Running'})
@@ -153,13 +170,17 @@ def upload():
             upload_count = 0
         upload_count += 1
 
-        # save latest .sb3 file
+        # save latest .sb3 file to Google Drive (fallback to local)
         session_id = request.args.get('session_id')
-        if session_id and file_path.endswith('.sb3'):
-            save_dir = os.path.join(os.path.expanduser('~'), 'ct_buddy_sessions')
-            os.makedirs(save_dir, exist_ok=True)
-            import shutil
-            shutil.copy(file_path, os.path.join(save_dir, f"{session_id}_project.sb3"))
+        if session_id:
+            try:
+                upload_to_drive(file_path, f"{session_id}_project.sb3")
+            except Exception as e:
+                print(f"Drive upload failed, saving locally: {e}")
+                save_dir = os.path.join(os.path.expanduser('~'), 'ct_buddy_sessions')
+                os.makedirs(save_dir, exist_ok=True)
+                import shutil
+                shutil.copy(file_path, os.path.join(save_dir, f"{session_id}_project.sb3"))
 
         return jsonify({'status': 'Uploaded', 'upload_count': upload_count}), 200
     except Exception as e:
