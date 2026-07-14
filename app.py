@@ -122,7 +122,7 @@ def upload_to_drive(file_path, filename):
 
 @app.route('/')
 def home():
-    return jsonify({'status': 'CT-Buddy Running'})
+    return send_file('index.html')
 
 
 @app.route('/get-project', methods=['GET'])
