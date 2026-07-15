@@ -121,7 +121,8 @@ def upload_to_drive(file_path, filename):
     service = build('drive', 'v3', credentials=creds)
     file_metadata = {'name': filename, 'parents': [folder_id]}
     media = MediaFileUpload(file_path, mimetype='application/octet-stream')
-    service.files().create(body=file_metadata, media_body=media).execute()
+    result = service.files().create(body=file_metadata, media_body=media).execute()
+    print(f"Drive upload success: {filename} -> {result.get('id')}")
 
 @app.route('/')
 def home():
