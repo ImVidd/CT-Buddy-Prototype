@@ -12,6 +12,9 @@ from datetime import datetime
 app = Flask(__name__)
 CORS(app)
 
+# Render stores secret files at /etc/secrets/
+CREDENTIALS_PATH = '/etc/secrets/credentials.json' if os.path.exists('/etc/secrets/credentials.json') else os.getenv('GOOGLE_CREDENTIALS', 'credentials.json')
+
 TRIGGER_OPCODES = [
     'event_whenflagclicked', 'event_whenbroadcastreceived',
     'event_whenkeypressed', 'control_start_as_clone', 'procedures_definition'
@@ -113,7 +116,7 @@ def upload_to_drive(file_path, filename):
     if not creds_path or not folder_id:
         raise Exception('Drive not configured')
     creds = service_account.Credentials.from_service_account_file(
-        creds_path, scopes=['https://www.googleapis.com/auth/drive']
+        CREDENTIALS_PATH, scopes=['https://www.googleapis.com/auth/drive']
     )
     service = build('drive', 'v3', credentials=creds)
     file_metadata = {'name': filename, 'parents': [folder_id]}
@@ -357,9 +360,9 @@ CSV_HEADERS = (
 
 
 def append_to_sheets(row_data):
-    creds_path = os.getenv('GOOGLE_CREDENTIALS')
+    creds_path = CREDENTIALS_PATH
     sheet_id = os.getenv('GOOGLE_SHEET_ID')
-    if not creds_path or not sheet_id:
+    if not sheet_id:
         return
     import gspread
     from google.oauth2.service_account import Credentials
