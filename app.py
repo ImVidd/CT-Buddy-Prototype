@@ -113,7 +113,6 @@ def upload_to_drive(file_path, filename):
     from googleapiclient.http import MediaFileUpload
     token_path = '/etc/secrets/drive_token.json' if os.path.exists('/etc/secrets/drive_token.json') else 'drive_token.json'
     folder_id = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
-    print(f"Drive debug: token_path={token_path} exists={os.path.exists(token_path)} folder_id={folder_id}")
     if not os.path.exists(token_path) or not folder_id:
         raise Exception('Drive not configured')
     creds = Credentials.from_authorized_user_file(token_path, ['https://www.googleapis.com/auth/drive'])
