@@ -108,16 +108,14 @@ PROJECTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'project
 
 
 def upload_to_drive(file_path, filename):
-    from google.oauth2 import service_account
+    from google.oauth2.credentials import Credentials
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaFileUpload
-    creds_path = os.getenv('GOOGLE_CREDENTIALS')
+    token_path = '/etc/secrets/drive_token.json' if os.path.exists('/etc/secrets/drive_token.json') else 'drive_token.json'
     folder_id = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
-    if not creds_path or not folder_id:
+    if not os.path.exists(token_path) or not folder_id:
         raise Exception('Drive not configured')
-    creds = service_account.Credentials.from_service_account_file(
-        CREDENTIALS_PATH, scopes=['https://www.googleapis.com/auth/drive']
-    )
+    creds = Credentials.from_authorized_user_file(token_path, ['https://www.googleapis.com/auth/drive'])
     service = build('drive', 'v3', credentials=creds)
     file_metadata = {'name': filename, 'parents': [folder_id]}
     media = MediaFileUpload(file_path, mimetype='application/octet-stream')
@@ -175,7 +173,12 @@ def upload():
         upload_count += 1
 
         # save latest .sb3 file to Google Drive (fallback to local)
-        # Drive upload skipped: service accounts lack storage quota on regular folders
+        session_id = request.args.get('session_id')
+        if session_id:
+            try:
+                upload_to_drive(file_path, f"{session_id}_project.sb3")
+            except Exception as e:
+                print(f"Drive upload failed: {e}")
 
         return jsonify({'status': 'Uploaded', 'upload_count': upload_count}), 200
     except Exception as e:

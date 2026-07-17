@@ -6,3 +6,5 @@ __pycache__/
 *.json
 
 .env.file
+drive_token.json
+get_drive_token.py
