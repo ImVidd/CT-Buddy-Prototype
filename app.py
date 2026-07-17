@@ -175,16 +175,7 @@ def upload():
         upload_count += 1
 
         # save latest .sb3 file to Google Drive (fallback to local)
-        session_id = request.args.get('session_id')
-        if session_id:
-            try:
-                upload_to_drive(file_path, f"{session_id}_project.sb3")
-            except Exception as e:
-                print(f"Drive upload failed, saving locally: {e}")
-                save_dir = os.path.join(os.path.expanduser('~'), 'ct_buddy_sessions')
-                os.makedirs(save_dir, exist_ok=True)
-                import shutil
-                shutil.copy(file_path, os.path.join(save_dir, f"{session_id}_project.sb3"))
+        # Drive upload skipped: service accounts lack storage quota on regular folders
 
         return jsonify({'status': 'Uploaded', 'upload_count': upload_count}), 200
     except Exception as e:
@@ -397,42 +388,30 @@ def build_row(data):
 def save():
     try:
         data = request.get_json()
-        save_dir = os.path.join(os.path.expanduser('~'), 'ct_buddy_sessions')
-        os.makedirs(save_dir, exist_ok=True)
         filename = data.get('filename')
 
-        csv_path = os.path.join(save_dir, 'sessions.csv')
-
         if filename:
-
-
             session = active_sessions.pop(filename, {})
             session['after_scores'] = data.get('after_scores')
             row = build_row(session)
-            with open(csv_path, 'a', newline='') as cf:
-                writer = csv.writer(cf)
-                writer.writerow(row)
             try:
                 append_to_sheets(row)
+                print(f"Sheets update success: {filename}")
             except Exception as e:
                 print(f"Sheets update failed: {e}")
         else:
             filename = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             active_sessions[filename] = data
-            write_header = not os.path.exists(csv_path)
             row = build_row(data)
-            with open(csv_path, 'a', newline='') as cf:
-                writer = csv.writer(cf)
-                if write_header:
-                    writer.writerow(CSV_HEADERS)
-                writer.writerow(row)
             try:
                 append_to_sheets(row)
+                print(f"Sheets save success: {filename}")
             except Exception as e:
                 print(f"Sheets save failed: {e}")
 
         return jsonify({'status': 'saved', 'filename': filename}), 200
     except Exception as e:
+        print(f"Save route error: {e}")
         return jsonify({'error': str(e)}), 500
 
 
