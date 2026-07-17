@@ -126,6 +126,10 @@ def upload_to_drive(file_path, filename):
 def home():
     return send_file('index.html')
 
+@app.route('/assets/<path:filename>')
+def assets(filename):
+    return send_file(os.path.join('assets', filename))
+
 
 @app.route('/get-project', methods=['GET'])
 def get_project():
