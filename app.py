@@ -117,6 +117,12 @@ def upload_to_drive(file_path, filename):
         raise Exception('Drive not configured')
     creds = Credentials.from_authorized_user_file(token_path, ['https://www.googleapis.com/auth/drive'])
     service = build('drive', 'v3', credentials=creds)
+    existing = service.files().list(
+        q=f"name='{filename}' and '{folder_id}' in parents and trashed=false",
+        fields='files(id)'
+    ).execute().get('files', [])
+    for f in existing:
+        service.files().delete(fileId=f['id']).execute()
     file_metadata = {'name': filename, 'parents': [folder_id]}
     media = MediaFileUpload(file_path, mimetype='application/octet-stream')
     result = service.files().create(body=file_metadata, media_body=media).execute()
