@@ -245,12 +245,20 @@
         </div>
 
         <!-- ##### LOBBY SCREEN ##### -->
-        <div id="lobby" style="text-align:center; padding:24px 0;">
-            <div style="font-size:15px; font-weight:600; margin-bottom:8px;">Welcome to CT-Buddy!</div>
-            <div style="font-size:13px; color:#666; margin-bottom:20px;">You have been assigned a Scratch project to work on. Download it, open it in Scratch, and modify it. Then come back here to upload your improved version and chat with CT-Buddy.</div>
-            <button onclick="downloadProject()" style="background:#4caf50; font-size:14px; padding:10px 24px;">Download Your Project</button>
-            <div style="margin-top:16px; font-size:12px; color:#aaa;">Once you've modified your project in Scratch, click below to continue.</div>
-            <button onclick="startSession()" style="margin-top:8px; background:#0066cc; font-size:13px;">I'm ready. Upload my project</button>
+        <div id="lobby" style="padding:8px 0;">
+            <div style="font-size:15px; font-weight:600; margin-bottom:16px;">Welcome to CT-Buddy!</div>
+            <div style="font-size:13px; color:#444; margin-bottom:20px;">Follow these steps to get started:</div>
+            <ol style="font-size:13px; color:#444; line-height:2; padding-left:20px; margin:0 0 24px 0;">
+                <li>Click the button below to download your Scratch project</li>
+                <li>Open it in <a href="https://scratch.mit.edu" target="_blank">Scratch</a> and modify your code</li>
+                <li>Come back here and upload your improved version</li>
+                <li>Chat with CT-Buddy to reflect on what you changed</li>
+            </ol>
+            <button onclick="downloadProject()" style="font-size:13px; padding:10px 20px;">Download Your Project</button>
+            <div id="readySection" style="display:none; margin-top:20px; border-top:1px solid #eee; padding-top:16px;">
+                <div style="font-size:13px; color:#444; margin-bottom:10px;">Once you've modified your project in Scratch, click below to upload it.</div>
+                <button onclick="startSession()" style="font-size:13px; padding:10px 20px;">I'm ready — Upload my project</button>
+            </div>
         </div>
         <!-- END LOBBY SCREEN -->
 
@@ -302,6 +310,7 @@
 
         function downloadProject() {
             window.location.href = `${API}/get-project`;
+            document.getElementById('readySection').style.display = 'block';
         }
 
         function startSession() {
